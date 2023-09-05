@@ -1,36 +1,45 @@
+import DBClient from './utils/db';
+
 const Bull = require('bull');
+const { ObjectId } = require('mongodb');
 const imageThumbnail = require('image-thumbnail');
 const fs = require('fs');
-const dbClient = require('./utils/db'); // Import your database client
 
 const fileQueue = new Bull('fileQueue');
+const userQueue = new Bull('userQueue');
+
+const createImageThumbnail = async (path, options) => {
+  try {
+    const thumbnail = await imageThumbnail(path, options);
+    const pathNail = `${path}_${options.width}`;
+
+    await fs.writeFileSync(pathNail, thumbnail);
+  } catch (error) {
+    console.log(error);
+  }
+};
 
 fileQueue.process(async (job) => {
-  const { userId, fileId } = job.data;
+  const { fileId } = job.data;
+  if (!fileId) throw Error('Missing fileId');
 
-  if (!fileId) {
-    throw new Error('Missing fileId');
-  }
+  const { userId } = job.data;
+  if (!userId) throw Error('Missing userId');
 
-  if (!userId) {
-    throw new Error('Missing userId');
-  }
+  const fileDocument = await DBClient.db.collection('files').findOne({ _id: ObjectId(fileId), userId: ObjectId(userId) });
+  if (!fileDocument) throw Error('File not found');
 
-  // Check if the file exists in the database
-  const file = await dbClient.client.db().collection('files').findOne({ _id: fileId, userId });
+  createImageThumbnail(fileDocument.localPath, { width: 500 });
+  createImageThumbnail(fileDocument.localPath, { width: 250 });
+  createImageThumbnail(fileDocument.localPath, { width: 100 });
+});
 
-  if (!file) {
-    throw new Error('File not found');
-  }
+userQueue.process(async (job) => {
+  const { userId } = job.data;
+  if (!userId) throw Error('Missing userId');
 
-  // Generate thumbnails
-  const originalFilePath = file.localPath;
-  const thumbnailSizes = [500, 250, 100];
-  const promises = thumbnailSizes.map(async (size) => {
-    const thumbnail = await imageThumbnail(originalFilePath, { width: size });
-    const thumbnailPath = originalFilePath.replace(/\.[^.]+$/, `_${size}$&`);
-    await fs.promises.writeFile(thumbnailPath, thumbnail);
-  });
+  const userDocument = await DBClient.db.collection('users').findOne({ _id: ObjectId(userId) });
+  if (!userDocument) throw Error('User not found');
 
-  await Promise.all(promises);
+  console.log(`Welcome ${userDocument.email}`);
 });
