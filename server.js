@@ -4,10 +4,10 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const path = require('path');
 
-//const routes = require('./routes/index');
+const routes = require('./routes/index');
 import controllerRouting from './routes/index';
 
-controllerRouting(app);//app.use('/', routes);
+app.use('/', routes);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
